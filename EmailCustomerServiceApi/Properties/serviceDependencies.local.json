@@ -1,0 +1,8 @@
+{
+  "dependencies": {
+    "identityapp1": {
+      "connectionInfo": "App registration: EmailAPI, Tenant: Imgsol (imgsol.co.zw - Microsoft Entra ID)",
+      "type": "identityapp.default"
+    }
+  }
+}
