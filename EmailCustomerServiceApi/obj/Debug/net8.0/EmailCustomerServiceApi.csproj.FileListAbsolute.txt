@@ -166,3 +166,4 @@ C:\Users\tnyamande\source\repos\EmailCustomerServiceApi\EmailCustomerServiceApi\
 C:\Users\tnyamande\source\repos\EmailCustomerServiceApi\EmailCustomerServiceApi\bin\Debug\net8.0\runtimes\osx-x86\native\libwkhtmltox.dylib
 C:\Users\tnyamande\source\repos\EmailCustomerServiceApi\EmailCustomerServiceApi\bin\Debug\net8.0\runtimes\win7-x64\native\libwkhtmltox.dll
 C:\Users\tnyamande\source\repos\EmailCustomerServiceApi\EmailCustomerServiceApi\bin\Debug\net8.0\runtimes\win7-x86\native\libwkhtmltox.dll
+C:\Users\tnyamande\source\repos\EmailCustomerServiceApi\EmailCustomerServiceApi\obj\Debug\net8.0\EmailCustomerServiceApi.sourcelink.json

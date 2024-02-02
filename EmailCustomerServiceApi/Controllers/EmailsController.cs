@@ -10,6 +10,8 @@ using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Authorization;
 using EmailCustomerServiceApi.Services;
 using EmailCustomerServiceApi.Models.ViewModels;
+using MailKit.Net.Smtp;
+using MimeKit;
 
 namespace EmailCustomerServiceApi.Controllers
 {
@@ -39,7 +41,7 @@ namespace EmailCustomerServiceApi.Controllers
 
                     // Use ConfigureAwait(false) to avoid capturing the context
                     CancellationToken ct = new CancellationToken();
-                    await client.AuthenticateAsync("tinotendanyamande0784@gmail.com", "eyispyoigblikwwc", ct);
+                    await client.AuthenticateAsync("tnyamande165@gmail.com", "pgkavdapcktuavaq", ct);
 
                     var inbox = client.Inbox;
                     inbox.Open(FolderAccess.ReadOnly);
@@ -48,6 +50,8 @@ namespace EmailCustomerServiceApi.Controllers
                     List<Email> allEmails = new List<Email>();
                     foreach (var uid in uids)
                     {
+                        var summary = inbox.Fetch(new[] { uid }, MessageSummaryItems.UniqueId).FirstOrDefault();
+                        var id = summary.UniqueId;
                         var res =   IsProccessed(uid.ToString()).Result;
                         if(res)
                         {
@@ -57,10 +61,15 @@ namespace EmailCustomerServiceApi.Controllers
                                 Id = Guid.NewGuid().ToString(),
                                 Body = message.HtmlBody,
                                 Subject = message.Subject,
-                                From = message.From.ToString(),
+                                From = message.From[0].ToString(),
                                 EmailDate = DateTime.Now,
                                 Status = "NEW",
-                                EmailUid = uid.ToString()
+                                EmailUid = id.ToString(),
+                                TimeAssigned = DateTime.Now,
+                                TimeResolved = DateTime.Now,
+                                TimeTaken = 0,
+                                FromName = message.From[1].ToString(),
+                      
                             };
 
                             await _context.AddAsync(email);
@@ -195,33 +204,25 @@ namespace EmailCustomerServiceApi.Controllers
 
         }
         [HttpPost("Resolve")]
-        public async Task<IActionResult> Resolve(string caseId , string res)
+        public async Task<IActionResult> Resolve(ReplyMesssage replyMesssage)
         {
 
             try
             {
                
-                var email = await _context.Emails.FirstOrDefaultAsync(a => a.Id == caseId);
+                var email = await _context.Emails.FirstOrDefaultAsync(a => a.Id == replyMesssage.CaseId);
                 if (email == null)
                 {
                     return BadRequest(new
                     {
-                        message = @$"Email with id ${caseId} not found"
+                        message = @$"Email with id ${replyMesssage.CaseId} not found"
                     });
                 }
-                MailData mailData = new MailData
-                {
-                    To = email.From,
-                    ToName = email.From,
-                    From = "tinotendanyamande0784@gmail.com",
-                    FromName = "Tinotenda Nyamande",
-                    Body = res,
-                    Subject = email.Subject
-                };
-                CancellationToken ct = new CancellationToken();
-                await _emailService.SendEmail(mailData, ct,"Complain email sent successfully");
-                email.ComplainResponse = res;
-                email.Status = "RESOLVED";
+                email.ComplainResponse = replyMesssage.Res;
+                email.TimeResolved = DateTime.Now;
+                email.TimeTaken = email.TimeAssigned.Subtract(DateTime.Now).Minutes;
+                email.Status = "REPLY_READY";
+                await _context.SaveChangesAsync();
                 return Ok("Response sent to customer");
             }
             catch (Exception ex)
@@ -248,7 +249,150 @@ namespace EmailCustomerServiceApi.Controllers
        
             return Ok(email);
         }
+        [HttpPost("SendReply")]
+        public async Task<IActionResult> SendReply()
+        {
+            var emails = await _context.Emails.Where(a => a.Status == "REPLY_READY").ToListAsync();
+            if (emails == null)
+            {
+                return BadRequest(new
+                {
+                    message = "No emaills ready for sending"
+                });
+            }
+            try
+            {
 
+
+                foreach (var email in emails)
+                {
+                    var replyMessage = new MimeMessage();
+                    replyMessage.InReplyTo = email.EmailUid;
+                    replyMessage.References.Add(email.EmailUid);
+                    replyMessage.Subject = "RE :" +email.Subject;
+                    replyMessage.To.Add(new MailboxAddress(email.FromName, email.From));
+                    var bodyBuilder = new BodyBuilder();
+                    bodyBuilder.TextBody = email.ComplainResponse;
+                    replyMessage.Body = bodyBuilder.ToMessageBody();
+                    replyMessage.From.Add(new MailboxAddress("Tino", "tnyamande165@gmail.com"));
+                    using (var client = new SmtpClient())
+                    {
+                        client.Connect("smtp.gmail.com", 587, false);
+
+                        // Use the appropriate authentication method
+                        // client.Authenticate("your.", "your_password");
+                        await client.AuthenticateAsync("tnyamande165@gmail.com", "pgkavdapcktuavaq", new CancellationToken());
+
+                        await client.SendAsync(replyMessage);
+
+                        await client.DisconnectAsync(true);
+                    }
+
+                }
+                return Ok("Reply sent");
+            }catch (Exception ex)
+            {
+                return BadRequest(new
+                {
+                    message = ex.ToString()
+                });
+            }
+
+        }
+        [HttpGet("GetEscalatedEmails")]
+        public async Task<IActionResult> GetEscalatedEmails()
+        {
+
+            try
+            {
+
+                var emails = await _context.Emails
+                                   .Where(a => a.Status == "ESCALATED")
+                                   .ToListAsync();
+                if (emails == null)
+                {
+                    return BadRequest(new
+                    {
+                        message = "You do not have any escalated emails"
+                    });
+                }
+                return Ok(emails);
+            }
+            catch (Exception ex)
+            {
+                return BadRequest(new
+                {
+                    message = ex.Message
+                });
+            }
+
+
+        }
+        [HttpGet("Escalate")]
+        public async Task<IActionResult> Escalate()
+        {
+
+            try
+            {
+
+                var emails = await _context.Emails
+                                   .Where(a => a.Status == "ALLOCATED")
+                                   .ToListAsync();
+                if (emails == null)
+                {
+                    return BadRequest(new
+                    {
+                        message = "You do not have any outstanding emails"
+                    });
+                }
+                foreach (var email in emails)
+                {
+                    var hours = email.TimeAssigned.Subtract(DateTime.Now).Hours;
+                    if (hours > 3)
+                    {
+                        email.Status = "ESCALATED";
+                        await _context.SaveChangesAsync();
+                    }
+                }
+                return Ok("Done");
+            }
+            catch (Exception ex)
+            {
+                return BadRequest(new
+                {
+                    message = ex.Message
+                });
+            }
+
+
+        }
+        [HttpGet("OutstandingAdmin")]
+        public async Task<IActionResult> OutstandingAdmin()
+        {
+            var emails = await _context.Emails.Where(a => a.Status == "ALLOCATED").OrderByDescending(a => a.TimeAssigned).ToListAsync();
+            if (emails == null)
+            {
+                return BadRequest(new
+                {
+                    message = "No data found"
+                });
+            }
+            return Ok(emails);
+        }
+
+        [HttpGet("Archive")]
+        public async Task<IActionResult> Archive()
+        {
+            var emails = await _context.Emails.Where(a => a.Status == "ALLOCATED").OrderByDescending(a => a.TimeAssigned).ToListAsync();
+            if (emails == null)
+            {
+                return BadRequest(new
+                {
+                    message = "No data found"
+                });
+            }
+            return Ok(emails);
+        }
     }
 }
 
